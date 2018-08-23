@@ -13,6 +13,8 @@ import type {
     DepthFuncType,
     TextureUnitType,
     ViewportType,
+    CullFaceModeType,
+    FrontFaceType,
 } from './types';
 
 export interface Value<T> {
@@ -330,6 +332,72 @@ export class BlendColor implements Value<Color> {
         const c = this.current;
         if (v.r !== c.r || v.g !== c.g || v.b !== c.b || v.a !== c.a) {
             this.context.gl.blendColor(v.r, v.g, v.b, v.a);
+            this.current = v;
+        }
+    }
+}
+
+export class CullFace implements Value<boolean> {
+    context: Context;
+    current: boolean;
+
+    constructor(context: Context) {
+        this.context = context;
+        this.current = false;
+    }
+
+    get(): boolean { return this.current; }
+
+    set(v: boolean): void {
+        if (this.current !== v) {
+            const gl = this.context.gl;
+            if (v) {
+                gl.enable(gl.CULL_FACE);
+            } else {
+                gl.disable(gl.CULL_FACE);
+            }
+            this.current = v;
+        }
+    }
+}
+
+export class CullFaceMode implements Value<CullFaceModeType> {
+    context: Context;
+    current: CullFaceModeType;
+
+    constructor(context: Context) {
+        this.context = context;
+        const gl = this.context.gl;
+        this.current = gl.BACK;
+    }
+
+    get(): CullFaceModeType { return this.current; }
+
+    set(v: CullFaceModeType): void {
+        if (this.current !== v) {
+            const gl = this.context.gl;
+            gl.cullFace(v);
+            this.current = v;
+        }
+    }
+}
+
+export class FrontFace implements Value<FrontFaceType> {
+    context: Context;
+    current: FrontFaceType;
+
+    constructor(context: Context) {
+        this.context = context;
+        const gl = this.context.gl;
+        this.current = gl.CCW;
+    }
+
+    get(): FrontFaceType { return this.current; }
+
+    set(v: FrontFaceType): void {
+        if (this.current !== v) {
+            const gl = this.context.gl;
+            gl.frontFace(v);
             this.current = v;
         }
     }

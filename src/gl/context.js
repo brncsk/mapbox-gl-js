@@ -7,7 +7,7 @@ import DepthMode from './depth_mode';
 import StencilMode from './stencil_mode';
 import ColorMode from './color_mode';
 import { deepEqual } from '../util/util';
-import { ClearColor, ClearDepth, ClearStencil, ColorMask, DepthMask, StencilMask, StencilFunc, StencilOp, StencilTest, DepthRange, DepthTest, DepthFunc, Blend, BlendFunc, BlendColor, Program, ActiveTextureUnit, Viewport, BindFramebuffer, BindRenderbuffer, BindTexture, BindVertexBuffer, BindElementBuffer, BindVertexArrayOES, PixelStoreUnpack, PixelStoreUnpackPremultiplyAlpha } from './value';
+import { ClearColor, ClearDepth, ClearStencil, ColorMask, DepthMask, StencilMask, StencilFunc, StencilOp, StencilTest, DepthRange, DepthTest, DepthFunc, Blend, BlendFunc, BlendColor, CullFace, CullFaceMode, FrontFace, Program, ActiveTextureUnit, Viewport, BindFramebuffer, BindRenderbuffer, BindTexture, BindVertexBuffer, BindElementBuffer, BindVertexArrayOES, PixelStoreUnpack, PixelStoreUnpackPremultiplyAlpha } from './value';
 
 
 import type {TriangleIndexArray, LineIndexArray, LineStripIndexArray} from '../data/index_array_type';
@@ -16,6 +16,10 @@ import type {
     StructArrayMember
 } from '../util/struct_array';
 import type Color from '../style-spec/util/color';
+import type {
+    CullFaceModeType,
+    FrontFaceType,
+} from './types';
 
 type ClearArgs = {
     color?: Color,
@@ -44,6 +48,9 @@ class Context {
     blend: Blend;
     blendFunc: BlendFunc;
     blendColor: BlendColor;
+    cullFace: CullFace;
+    cullFaceMode: CullFaceMode;
+    frontFace: FrontFace;
     program: Program;
     activeTexture: ActiveTextureUnit;
     viewport: Viewport;
@@ -79,6 +86,9 @@ class Context {
         this.blend = new Blend(this);
         this.blendFunc = new BlendFunc(this);
         this.blendColor = new BlendColor(this);
+        this.cullFace = new CullFace(this);
+        this.cullFaceMode = new CullFaceMode(this);
+        this.frontFace = new FrontFace(this);
         this.program = new Program(this);
         this.activeTexture = new ActiveTextureUnit(this);
         this.viewport = new Viewport(this);
@@ -154,6 +164,13 @@ class Context {
         // }
 
         gl.clear(mask);
+    }
+
+    setCullFace(cullFace: boolean, cullFaceMode?: CullFaceModeType, frontFace?: FrontFaceType) {
+        const gl = this.gl;
+        this.cullFace.set(cullFace);
+        this.cullFaceMode.set(cullFaceMode ? cullFaceMode : gl.BACK);
+        this.frontFace.set(frontFace ? frontFace : gl.CCW);
     }
 
     setDepthMode(depthMode: $ReadOnly<DepthMode>) {

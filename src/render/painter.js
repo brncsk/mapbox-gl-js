@@ -332,6 +332,11 @@ class Painter {
         this.renderPass = 'offscreen';
         this.depthRboNeedsClear = true;
 
+        // Clockwise winding order for culling front-facing triangles when
+        // rendering offscreen.
+        const gl = this.context.gl;
+        this.context.setCullFace(true, gl.FRONT, gl.CCW);
+
         for (const layerId of layerIds) {
             const layer = this.style._layers[layerId];
             if (!layer.hasOffscreenPass() || layer.isHidden(this.transform.zoom)) continue;
@@ -347,6 +352,10 @@ class Painter {
 
         // Clear buffers in preparation for drawing to the main framebuffer
         this.context.clear({ color: options.showOverdrawInspector ? Color.black : Color.transparent, depth: 1 });
+
+        // Counter-clockwise winding order for culling back-facing triangles
+        // when rendering on the main buffer.
+        this.context.setCullFace(true, gl.BACK, gl.CCW);
 
         this._showOverdrawInspector = options.showOverdrawInspector;
         this.depthRange = (style._order.length + 2) * this.numSublayers * this.depthEpsilon;
