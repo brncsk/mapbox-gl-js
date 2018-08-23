@@ -348,9 +348,12 @@ class Tile {
             maskedBoundsArray.emplaceBack(brVertex.x, brVertex.y, brVertex.x, brVertex.y);
 
             const offset = segment.vertexLength;
-            // 0, 1, 2
-            // 1, 2, 3
-            indexArray.emplaceBack(offset, offset + 1, offset + 2);
+            // ┌──────┐
+            // │ 0  1 │ Counter-clockwise winding order: front-facing culling.
+            // │      │ Triangle 1: 0 => 2 => 1
+            // │ 2  3 │ Triangle 2: 1 => 2 => 3
+            // └──────┘
+            indexArray.emplaceBack(offset, offset + 2, offset + 1);
             indexArray.emplaceBack(offset + 1, offset + 2, offset + 3);
 
             segment.vertexLength += 4;

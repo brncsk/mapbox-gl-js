@@ -121,23 +121,22 @@ class CircleBucket<Layer: CircleStyleLayer | HeatmapStyleLayer> implements Bucke
 
                 // this geometry will be of the Point type, and we'll derive
                 // two triangles from it.
-                //
-                // ┌─────────┐
-                // │ 3     2 │
-                // │         │
-                // │ 0     1 │
-                // └─────────┘
+                // ┌──────┐
+                // │ 0  1 │ Counter-clockwise winding order: front-facing culling.
+                // │      │ Triangle 1: 0 => 2 => 1
+                // │ 2  3 │ Triangle 2: 1 => 2 => 3
+                // └──────┘
 
                 const segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.indexArray);
                 const index = segment.vertexLength;
 
-                addCircleVertex(this.layoutVertexArray, x, y, -1, -1);
-                addCircleVertex(this.layoutVertexArray, x, y, 1, -1);
-                addCircleVertex(this.layoutVertexArray, x, y, 1, 1);
-                addCircleVertex(this.layoutVertexArray, x, y, -1, 1);
+                addCircleVertex(this.layoutVertexArray, x, y, -1, -1); // 0
+                addCircleVertex(this.layoutVertexArray, x, y, 1, -1);  // 1
+                addCircleVertex(this.layoutVertexArray, x, y, -1, 1);  // 2
+                addCircleVertex(this.layoutVertexArray, x, y, 1, 1);   // 3
 
-                this.indexArray.emplaceBack(index, index + 1, index + 2);
-                this.indexArray.emplaceBack(index, index + 3, index + 2);
+                this.indexArray.emplaceBack(index, index + 2, index + 1);
+                this.indexArray.emplaceBack(index + 1, index + 2, index + 3);
 
                 segment.vertexLength += 4;
                 segment.primitiveLength += 2;

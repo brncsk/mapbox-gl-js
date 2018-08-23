@@ -151,10 +151,11 @@ class FillBucket implements Bucket {
             assert(indices.length % 3 === 0);
 
             for (let i = 0; i < indices.length; i += 3) {
+                // Counter-clockwise winding order: front-facing culling.
                 this.indexArray.emplaceBack(
                     triangleIndex + indices[i],
-                    triangleIndex + indices[i + 1],
-                    triangleIndex + indices[i + 2]);
+                    triangleIndex + indices[i + 2],
+                    triangleIndex + indices[i + 1]);
             }
 
             triangleSegment.vertexLength += numVertices;

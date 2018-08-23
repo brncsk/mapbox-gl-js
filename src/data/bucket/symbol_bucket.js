@@ -499,7 +499,8 @@ class SymbolBucket implements Bucket {
 
             addDynamicAttributes(dynamicLayoutVertexArray, labelAnchor, 0);
 
-            indexArray.emplaceBack(index, index + 1, index + 2);
+            // Counter-clockwise winding order: front-facing culling.
+            indexArray.emplaceBack(index, index + 2, index + 1);
             indexArray.emplaceBack(index + 1, index + 2, index + 3);
 
             segment.vertexLength += 4;
@@ -543,24 +544,30 @@ class SymbolBucket implements Bucket {
         const anchorX = symbolInstance.anchorX;
         const anchorY = symbolInstance.anchorY;
 
-        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x1, y1));
-        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x2, y1));
-        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x2, y2));
-        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x1, y2));
+        // ┌──────┐
+        // │ 0  1 │ Counter-clockwise winding order: front-facing culling.
+        // │      │ Triangle 1: 0 => 2 => 1
+        // │ 2  3 │ Triangle 2: 1 => 2 => 3
+        // └──────┘
+        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x1, y1)); // 0
+        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x2, y1)); // 1
+        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x1, y2)); // 2
+        this._addCollisionDebugVertex(layoutVertexArray, collisionVertexArray, boxAnchorPoint, anchorX, anchorY, new Point(x2, y2)); // 3
 
         segment.vertexLength += 4;
         if (isCircle) {
             const indexArray: TriangleIndexArray = (arrays.indexArray: any);
-            indexArray.emplaceBack(index, index + 1, index + 2);
-            indexArray.emplaceBack(index, index + 2, index + 3);
+            // Counter-clockwise winding order: front-facing culling.
+            indexArray.emplaceBack(index, index + 2, index + 1);
+            indexArray.emplaceBack(index + 1, index + 2, index + 3);
 
             segment.primitiveLength += 2;
         } else {
             const indexArray: LineIndexArray = (arrays.indexArray: any);
             indexArray.emplaceBack(index, index + 1);
-            indexArray.emplaceBack(index + 1, index + 2);
-            indexArray.emplaceBack(index + 2, index + 3);
-            indexArray.emplaceBack(index + 3, index);
+            indexArray.emplaceBack(index + 1, index + 3);
+            indexArray.emplaceBack(index + 3, index + 2);
+            indexArray.emplaceBack(index + 2, index);
 
             segment.primitiveLength += 4;
         }
@@ -655,7 +662,8 @@ class SymbolBucket implements Bucket {
 
         const endIndex = placedSymbol.vertexStartIndex + placedSymbol.numGlyphs * 4;
         for (let vertexIndex = placedSymbol.vertexStartIndex; vertexIndex < endIndex; vertexIndex += 4) {
-            this.text.indexArray.emplaceBack(vertexIndex, vertexIndex + 1, vertexIndex + 2);
+            // Counter-clockwise winding order: front-facing culling.
+            this.text.indexArray.emplaceBack(vertexIndex, vertexIndex + 2, vertexIndex + 1);
             this.text.indexArray.emplaceBack(vertexIndex + 1, vertexIndex + 2, vertexIndex + 3);
         }
     }
@@ -715,7 +723,8 @@ class SymbolBucket implements Bucket {
             const placedIcon = this.icon.placedSymbolArray.get(i);
             if (placedIcon.numGlyphs) {
                 const vertexIndex = placedIcon.vertexStartIndex;
-                this.icon.indexArray.emplaceBack(vertexIndex, vertexIndex + 1, vertexIndex + 2);
+                // Counter-clockwise winding order: front-facing culling.
+                this.icon.indexArray.emplaceBack(vertexIndex, vertexIndex + 2, vertexIndex + 1);
                 this.icon.indexArray.emplaceBack(vertexIndex + 1, vertexIndex + 2, vertexIndex + 3);
             }
         }

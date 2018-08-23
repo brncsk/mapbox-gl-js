@@ -485,7 +485,8 @@ class LineBucket implements Bucket {
         addLineVertex(layoutVertexArray, currentVertex, extrude, round, false, endLeft, distance);
         this.e3 = segment.vertexLength++;
         if (this.e1 >= 0 && this.e2 >= 0) {
-            indexArray.emplaceBack(this.e1, this.e2, this.e3);
+            // Counter-clockwise winding order: front-facing culling.
+            indexArray.emplaceBack(this.e1, this.e3, this.e2);
             segment.primitiveLength++;
         }
         this.e1 = this.e2;
@@ -496,6 +497,7 @@ class LineBucket implements Bucket {
         addLineVertex(layoutVertexArray, currentVertex, extrude, round, true, -endRight, distance);
         this.e3 = segment.vertexLength++;
         if (this.e1 >= 0 && this.e2 >= 0) {
+            // Counter-clockwise winding order: front-facing culling.
             indexArray.emplaceBack(this.e1, this.e2, this.e3);
             segment.primitiveLength++;
         }
@@ -537,7 +539,8 @@ class LineBucket implements Bucket {
         addLineVertex(layoutVertexArray, currentVertex, extrude, false, lineTurnsLeft, 0, distance);
         this.e3 = segment.vertexLength++;
         if (this.e1 >= 0 && this.e2 >= 0) {
-            indexArray.emplaceBack(this.e1, this.e2, this.e3);
+            // Counter-clockwise winding order: front-facing culling.
+            indexArray.emplaceBack(this.e1, this.e3, this.e2);
             segment.primitiveLength++;
         }
 
