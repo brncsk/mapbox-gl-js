@@ -160,8 +160,13 @@ class FillExtrusionBucket implements Bucket {
 
                             const bottomRight = segment.vertexLength;
 
+                            // ┌──────┐
+                            // │ 0  1 │ Clockwise winding order: back-facing culling.
+                            // │      │ Triangle 1: 0 => 1 => 2
+                            // │ 2  3 │ Triangle 2: 1 => 3 => 2
+                            // └──────┘
                             this.indexArray.emplaceBack(bottomRight, bottomRight + 1, bottomRight + 2);
-                            this.indexArray.emplaceBack(bottomRight + 1, bottomRight + 2, bottomRight + 3);
+                            this.indexArray.emplaceBack(bottomRight + 1, bottomRight + 3, bottomRight + 2);
 
                             segment.vertexLength += 4;
                             segment.primitiveLength += 2;
@@ -201,6 +206,7 @@ class FillExtrusionBucket implements Bucket {
             assert(indices.length % 3 === 0);
 
             for (let j = 0; j < indices.length; j += 3) {
+                // Clockwise winding order for culling front-facing triangles.
                 this.indexArray.emplaceBack(
                     triangleIndex + indices[j],
                     triangleIndex + indices[j + 1],
