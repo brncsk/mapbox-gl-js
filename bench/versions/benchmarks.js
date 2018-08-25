@@ -59,7 +59,7 @@ promise = promise.then(() => {
     getWorkerPool().acquire(-1);
 });
 
-console.log('benchmarks', window.mapboxglBenchmarks);
+
 window.runBenchmarks = () => {
     for (const name in window.mapboxglBenchmarks) {
         if (filter && name !== filter)
