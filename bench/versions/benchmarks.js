@@ -56,6 +56,10 @@ const filter = window.location.hash.substr(1);
 let promise = Promise.resolve();
 
 promise = promise.then(() => {
+    // Ensure the global worker pool is never drained. Browsers have resource limits
+    // on the max number of workers that can be created per page.
+    // We do this async to avoid creating workers before the worker bundle blob
+    // URL has been set up, which happens after this module is executed.
     getWorkerPool().acquire(-1);
 });
 
