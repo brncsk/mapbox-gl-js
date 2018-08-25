@@ -8,8 +8,14 @@ mapboxgl.accessToken = accessToken;
 
 const urls = (process.env.MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/streets-v10').split(',');
 const benchmarks = [];
+const filter = window.location.hash.substr(1);
 
-function createBenchmark(Benchmark, locations, options) {
+function register(Benchmark, locations, options) {
+    const name = Benchmark.name;
+
+    if (filter && name !== filter)
+        return;
+
     const benchmark = {
         name: Benchmark.name,
         versions: []
@@ -30,65 +36,6 @@ function createBenchmark(Benchmark, locations, options) {
     benchmarks.push(benchmark);
 }
 
-const filter = window.location.hash.substr(1);
-
-function register(Benchmark) {
-    const name = Benchmark.name;
-
-    if (filter && name !== filter)
-        return;
-
-    switch (name) {
-    case 'Layout':
-    case 'Paint':
-        locations.forEach(location => {
-            const loc = name === 'Layout' ? location.tileID : [location];
-            createBenchmark(Benchmark, loc, {location});
-        });
-        break;
-    case 'QueryBox':
-    case 'QueryPoint':
-        createBenchmark(Benchmark, locations);
-        break;
-    default:
-        createBenchmark(Benchmark);
-    }
-}
-
-let promise = Promise.resolve();
-
-function runBenchmarks() {
-    benchmarks.forEach(bench => {
-        bench.versions.forEach(version => {
-            promise = promise.then(() => {
-                version.status = 'running';
-                updateUI(benchmarks);
-
-                return bench.bench.run()
-                    .then(measurements => {
-                        // scale measurements down by iteration count, so that
-                        // they represent (average) time for a single iteration
-                        const samples = measurements.map(({time, iterations}) => time / iterations);
-                        version.status = 'ended';
-                        version.samples = samples;
-                        version.summary = summaryStatistics(samples);
-                        version.regression = regression(measurements);
-                        updateUI(benchmarks);
-                    })
-                    .catch(error => {
-                        version.status = 'errored';
-                        version.error = error;
-                        updateUI(benchmarks);
-                    });
-            });
-        });
-
-        promise = promise.then(() => {
-            updateUI(benchmarks, true);
-        });
-    });
-}
-
 import StyleLayerCreate from '../benchmarks/style_layer_create';
 import Validate from '../benchmarks/style_validate';
 import Layout from '../benchmarks/layout';
@@ -98,21 +45,49 @@ import QueryBox from '../benchmarks/query_box';
 
 register(StyleLayerCreate);
 register(Validate);
-register(Layout);
-register(Paint);
-register(QueryPoint);
-register(QueryBox);
-
-runBenchmarks();
+locations.forEach(location => {
+    register(Layout, location.tileID, {location});
+    register(Paint, [location], {location});
+});
+register(QueryPoint, locations);
+register(QueryBox, locations);
 
 import getWorkerPool from '../../src/util/global_worker_pool';
 
-setTimeout(() => {
-    // Ensure the global worker pool is never drained. Browsers have resource limits
-    // on the max number of workers that can be created per page.
-    // We do this async to avoid creating workers before the worker bundle blob
-    // URL has been set up, which happens after this module is executed.
+let promise = Promise.resolve();
+
+promise = promise.then(() => {
     getWorkerPool().acquire(-1);
-}, 0);
+});
+
+benchmarks.forEach(bench => {
+    bench.versions.forEach(version => {
+        promise = promise.then(() => {
+            version.status = 'running';
+            updateUI(benchmarks);
+
+            return bench.bench.run()
+                .then(measurements => {
+                    // scale measurements down by iteration count, so that
+                    // they represent (average) time for a single iteration
+                    const samples = measurements.map(({time, iterations}) => time / iterations);
+                    version.status = 'ended';
+                    version.samples = samples;
+                    version.summary = summaryStatistics(samples);
+                    version.regression = regression(measurements);
+                    updateUI(benchmarks);
+                })
+                .catch(error => {
+                    version.status = 'errored';
+                    version.error = error;
+                    updateUI(benchmarks);
+                });
+        });
+    });
+
+    promise = promise.then(() => {
+        updateUI(benchmarks, true);
+    });
+});
 
 export default mapboxgl;

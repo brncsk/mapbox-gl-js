@@ -22,8 +22,11 @@
             .then(pkg => [`v${pkg.version}`, 'master']))
             .then(versions => {
                 const scripts = versions.map(v => `https://s3.amazonaws.com/mapbox-gl-js/${v}/benchmarks.js`)
-                    .concat('/bench/versions/benchmarks_generated.js', '/bench/versions/benchmarks_view_generated.js');
+                    .concat('/bench/versions/benchmarks_generated.js');
                 return scripts.reduce((p, script) => p.then(() => loadScript(script)), Promise.resolve());
+            })
+            .then(() => {
+                window.runBenchmarks();
             })
             .catch(err => console.error(err));
 
