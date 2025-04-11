@@ -390,6 +390,9 @@
               "ios": "11.29.0"
             }
           }
+        },
+        "formatted": {
+          "doc": "The result will be coerced to a formatted string."
         }
       }
     },

@@ -366,7 +366,7 @@ export type SchemaSpecification = {
 
 export type OptionSpecification = {
     "default": unknown | ExpressionSpecification,
-    "type"?: "string" | "number" | "boolean" | "color" | "object",
+    "type"?: "string" | "number" | "boolean" | "color" | "object" | "formatted",
     "array"?: boolean,
     "minValue"?: number,
     "maxValue"?: number,

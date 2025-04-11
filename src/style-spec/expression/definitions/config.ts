@@ -30,7 +30,7 @@ function coerceValue(type: string, value: any): any {
     case 'color': return Color.parse(value);
     case 'formatted': {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        return Formatted.fromString(valueToString(value));
+        return Formatted.factory(value);
     }
     case 'resolvedImage': {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
