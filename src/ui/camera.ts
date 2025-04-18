@@ -948,7 +948,7 @@ class Camera extends Evented<MapEvents> {
         const p0world = tr.project(coord0);
         const p1world = tr.project(coord1);
 
-        if(!options.minAltitude || !options.maxAltitude) {
+        if(options.minAltitude === undefined || options.maxAltitude === undefined) {
             const z0 = this.queryTerrainElevation(coord0);
             const z1 = this.queryTerrainElevation(coord1);
             const z2 = this.queryTerrainElevation(coord2);
