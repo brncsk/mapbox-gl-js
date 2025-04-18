@@ -95,6 +95,8 @@ export type CameraOptions = {
     padding?: number | PaddingOptions;
     minZoom?: number;
     maxZoom?: number;
+    minAltitude?: number;
+    maxAltitude?: number;
     retainPadding?: boolean;
 };
 
@@ -946,14 +948,19 @@ class Camera extends Evented<MapEvents> {
         const p0world = tr.project(coord0);
         const p1world = tr.project(coord1);
 
-        const z0 = this.queryTerrainElevation(coord0);
-        const z1 = this.queryTerrainElevation(coord1);
-        const z2 = this.queryTerrainElevation(coord2);
-        const z3 = this.queryTerrainElevation(coord3);
+        if(!options.minAltitude || !options.maxAltitude) {
+            const z0 = this.queryTerrainElevation(coord0);
+            const z1 = this.queryTerrainElevation(coord1);
+            const z2 = this.queryTerrainElevation(coord2);
+            const z3 = this.queryTerrainElevation(coord3);
+
+            options.minAltitude ??= Math.min(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
+            options.maxAltitude ??= Math.max(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
+        }
 
         const worldCoords: vec3[] = [
-            [p0world.x, p0world.y, Math.min(z0 || 0, z1 || 0, z2 || 0, z3 || 0)],
-            [p1world.x, p1world.y, Math.max(z0 || 0, z1 || 0, z2 || 0, z3 || 0)]
+            [p0world.x, p0world.y, Math.min(options.minAltitude || 0, options.maxAltitude || 0)],
+            [p1world.x, p1world.y, Math.min(options.minAltitude || 0, options.maxAltitude || 0)],
         ];
 
         let aabb = Aabb.fromPoints(worldCoords);
