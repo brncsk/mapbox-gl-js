@@ -783,7 +783,8 @@ export class Placement {
                     collisionGroup.predicate,
                     circlePixelDiameter,
                     textPixelPadding,
-                    this.retainedQueryData[bucket.bucketInstanceId].tileID
+                    this.retainedQueryData[bucket.bucketInstanceId].tileID,
+                    totalZOffset
                 );
 
                 assert(!placedGlyphCircles.circles.length || (!placedGlyphCircles.collisionDetected || showCollisionBoxes));

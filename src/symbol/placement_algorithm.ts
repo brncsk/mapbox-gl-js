@@ -44,6 +44,7 @@ export interface CollisionDetector {
         circlePixelDiameter: number,
         textPixelPadding: number,
         tileID: OverscaledTileID,
+        zOffset: number,
     ) => PlacedCollisionCircles;
 
     insertCollisionBox: (
