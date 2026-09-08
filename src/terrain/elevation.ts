@@ -127,15 +127,24 @@ export class Elevation {
         }
     }
 
+    /*
+     * Returns a sampler of the tile-space displacement at a point, in tile units.
+     *
+     * `constantOffsetMeters` is added to every sample. It is how a symbol that is drawn
+     * at a fixed height above the ground, such as one carrying `symbol-z-offset`, reaches
+     * the parts of placement and projection that only know about terrain. Zero leaves the
+     * sampler as it was.
+     */
     static getAtTileOffsetFunc(
         tileID: OverscaledTileID,
         lat: number,
         worldSize: number,
         projection: Projection,
+        constantOffsetMeters: number = 0,
     ): (arg1: Point, arg2: Elevation, arg3?: ElevationFeature) => [number, number, number] {
         return ((p: Point, elevation: Elevation, elevationFeature?: ElevationFeature) => {
             assert(p);
-            const z = this.getAtTileOffset(tileID, p, elevation, elevationFeature);
+            const z = this.getAtTileOffset(tileID, p, elevation, elevationFeature) + constantOffsetMeters;
             const upVector = projection.upVector(tileID.canonical, p.x, p.y);
             const upVectorScale = projection.upVectorScale(tileID.canonical, lat, worldSize).metersToTile;
             vec3.scale(upVector, upVector, z * upVectorScale);

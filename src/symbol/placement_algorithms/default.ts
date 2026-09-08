@@ -385,7 +385,8 @@ export class DefaultPlacementAlgorithm implements PlacementAlgorithm {
                     collisionGroup.predicate,
                     circlePixelDiameter,
                     textPixelPadding,
-                    placement.retainedQueryData[bucket.bucketInstanceId].tileID
+                    placement.retainedQueryData[bucket.bucketInstanceId].tileID,
+                    totalZOffset
                 );
 
                 assert(!placedGlyphCircles.circles.length || (!placedGlyphCircles.collisionDetected || showCollisionBoxes));

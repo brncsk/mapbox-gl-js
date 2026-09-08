@@ -229,14 +229,20 @@ class CollisionIndex implements CollisionDetector {
         circlePixelDiameter: number,
         textPixelPadding: number,
         tileID: OverscaledTileID,
+        zOffset: number = 0,
     ): PlacedCollisionCircles {
         const placedCollisionCircles = [];
         const elevation = this.transform.elevation;
         const projection = bucket.getProjection();
         const renderElevatedRoads = bucket.elevationType === 'road';
-        const hasElevation = !!elevation || renderElevatedRoads;
+        // A label along a line is drawn at `zOffset` metres above the ground by the shader,
+        // which reads `symbol-z-offset` and the height sampled from the buildings under it.
+        // The circles it collides as are projected here, so they have to be lifted by the
+        // same amount: on the ground they land elsewhere on the screen in a pitched view,
+        // and the label then takes space where it is not and is dropped where it fits.
+        const hasElevation = !!elevation || renderElevatedRoads || zOffset !== 0;
 
-        const getElevation = Elevation.getAtTileOffsetFunc(tileID, this.transform.center.lat, this.transform.worldSize, projection);
+        const getElevation = Elevation.getAtTileOffsetFunc(tileID, this.transform.center.lat, this.transform.worldSize, projection, zOffset);
 
         const tileAnchorPoint = new Point(symbol.tileAnchorX, symbol.tileAnchorY);
 
