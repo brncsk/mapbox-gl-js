@@ -136,6 +136,43 @@ describe('Style#loadURL', () => {
         await waitFor(style, "style.load");
     });
 
+    test('merges an import that loads after its own error settled the wait', async () => {
+        const {style} = newStubStyle();
+
+        // The root imports a fragment that names a sprite and imports a nested style. The
+        // sprite request fails at once, while the nested style arrives later, as a slow
+        // network delivers Standard. The error settles the wait for the fragment; the merge
+        // has to pick the nested style up when it loads all the same.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const nested = createStyleJSON({layers: [{id: 'land', type: 'background'}]});
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const fragment = createStyleJSON({
+            sprite: 'http://example.com/sprite',
+            imports: [{id: 'nested', url: '/styles/nested.json'}],
+        });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const initialStyle = createStyleJSON({imports: [{id: 'fragment', url: '', data: fragment}]});
+
+        mockFetch({
+            '/style.json': () => new Response(JSON.stringify(initialStyle)),
+            'sprite.*json': () => Promise.resolve(new Response(null, {status: 404, statusText: 'Not Found'})),
+            'sprite.*png': () => Promise.resolve(new Response(null, {status: 404, statusText: 'Not Found'})),
+            '/styles/nested.json': () => new Promise(resolve => {
+                setTimeout(() => resolve(new Response(JSON.stringify(nested))), 50);
+            }),
+        });
+
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        style.loadURL('/style.json');
+        await waitFor(style, 'style.load');
+
+        const landId = makeFQID('land', makeFQID('nested', 'fragment'));
+        await vi.waitFor(() => {
+            expect(style._mergedOrder).toContain(landId);
+        }, {timeout: 2000});
+    });
+
     test('imports style from JSON', async () => {
         const {style} = newStubStyle();
 

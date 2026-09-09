@@ -744,15 +744,23 @@ class Style extends Evented<MapEvents> {
             const style = this._createFragmentStyle(importSpec);
 
             // Merge everything and update layers after the import style is settled.
-            const waitForStyle = new Promise((resolve) => {
-                style.once('style.import.load', resolve);
-                style.once('error', resolve);
-            }).then(() => {
+            const merge = () => {
                 this.mergeAll();
                 // Fire a data event so that updateSources() runs after _mergedLayers is populated,
                 // ensuring tile fetches start promptly once merged state is ready.
                 this.fire(new Event('data', {dataType: 'style'}));
-            });
+            };
+            const waitForStyle = new Promise<void>((resolve) => {
+                style.once('style.import.load', () => resolve());
+                style.once('error', () => {
+                    // An error settles the wait so that a broken import does not hold the style
+                    // up. The import may still load after it, for instance when its sprite fails
+                    // while its own imports are in flight, and a merge that ran before that would
+                    // miss its layers and lights for good. So merge once more when it loads.
+                    style.once('style.import.load', merge);
+                    resolve();
+                });
+            }).then(merge);
             waitForStyles.push(waitForStyle);
 
             // Load empty style if one of the ancestors was already
