@@ -1706,19 +1706,27 @@ class Style extends Evented<MapEvents> {
     }
 
     /**
-     * Loads an iconset from the given URL. If the sprite is not a Mapbox URL, it loads a raster sprite.
+     * Loads an iconset from the given URL. A Mapbox URL loads the vector iconset of the style,
+     * with its raster sprite as the fallback. Any other URL loads a raster sprite, unless it ends
+     * in `.pbf`, which names a self-hosted vector iconset and is requested as given.
      * @fires Map.event:data Fires `data` with `{dataType: 'style'}` to indicate that sprite loading is complete.
      */
     _loadIconset(url: string) {
-        // For non-Mapbox URLs, automatically fall back to raster sprite loading.
+        // Upstream loads vector icons for Mapbox-hosted styles only. A `.pbf` suffix opts a
+        // self-hosted sprite into the vector loader as well: `normalizeIconsetURL` leaves a
+        // non-Mapbox URL alone, so the file is requested as named, and there is no raster
+        // fallback, because a self-hosted iconset has no sprite JSON and PNG beside it.
+        const isSelfHostedIconset = !isMapboxURL(url) && url.endsWith('.pbf');
+
+        // For other non-Mapbox URLs, automatically fall back to raster sprite loading.
         // 'raster' and 'icon_set' are reserved for internal/test use only.
-        if ((!isMapboxURL(url) && this.map._spriteFormat !== 'icon_set') || this.map._spriteFormat === 'raster') {
+        if (!isSelfHostedIconset && ((!isMapboxURL(url) && this.map._spriteFormat !== 'icon_set') || this.map._spriteFormat === 'raster')) {
             this._loadSprite(url);
             return;
         }
 
         // At runtime _spriteFormat is always 'auto'
-        const isFallbackExists = this.map._spriteFormat === 'auto';
+        const isFallbackExists = !isSelfHostedIconset && this.map._spriteFormat === 'auto';
 
         const controller = new AbortController();
         this._spriteRequest = controller;

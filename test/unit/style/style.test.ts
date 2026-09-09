@@ -2974,6 +2974,79 @@ test('Style#_loadSprite broadcasts spriteLoaded when the sprite fails to load', 
     expect(errorSpy).toHaveBeenCalled();
 });
 
+test('Style#_loadIconset loads a self-hosted vector iconset when the sprite URL ends in .pbf', async () => {
+    // The smallest useful iconset: one icon named "dot" whose tree is 4 by 4 units and empty.
+    const iconset = new Uint8Array([
+        0x0a, 0x09, // IconSet.icons[0], 9 bytes
+        0x0a, 0x03, 0x64, 0x6f, 0x74, // Icon.name = "dot"
+        0x1a, 0x02, 0x08, 0x04 // Icon.usvg_tree = {width: 4}
+    ]);
+    mockFetch({
+        'sprite.pbf$': () => Promise.resolve(new Response(iconset, {status: 200}))
+    });
+
+    const style = new Style(new StubMap());
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    style.loadJSON(createStyleJSON());
+    await waitFor(style, 'style.load');
+
+    const loadSprite = vi.spyOn(style, '_loadSprite');
+    style._loadIconset('http://example.com/sprite.pbf');
+    await waitFor(style, 'data');
+
+    expect(loadSprite).not.toHaveBeenCalled();
+    const image = style.imageManager.getImage(ImageId.from('dot'), '');
+    expect(image.usvg).toBe(true);
+    expect(image.icon.usvg_tree.width).toBe(4);
+});
+
+test('Style#_loadIconset does not fall back to a raster sprite when a self-hosted iconset fails to load', async () => {
+    mockFetch({
+        'sprite.pbf$': () => Promise.resolve(new Response(null, {status: 404, statusText: 'Not Found'}))
+    });
+
+    const style = new Style(new StubMap());
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    style.loadJSON(createStyleJSON());
+    await waitFor(style, 'style.load');
+
+    vi.spyOn(style.dispatcher, 'broadcast');
+    const loadSprite = vi.spyOn(style, '_loadSprite');
+    const errorSpy = vi.fn();
+    style.on('error', errorSpy);
+
+    style._loadIconset('http://example.com/sprite.pbf');
+    await waitFor(style, 'data');
+
+    // A self-hosted iconset has no sprite JSON and PNG beside it, so the failure is
+    // reported instead of retried as a raster sprite, and the worker is still notified.
+    expect(loadSprite).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+    expect(style.dispatcher.broadcast).toHaveBeenCalledWith(
+        'spriteLoaded',
+        {scope: ''}
+    );
+});
+
+test('Style#_loadIconset loads a raster sprite for a non-Mapbox URL without the .pbf suffix', async () => {
+    mockFetch({
+        'sprite.*json': () => Promise.resolve(new Response(null, {status: 404, statusText: 'Not Found'})),
+        'sprite.*png': () => Promise.resolve(new Response(null, {status: 404, statusText: 'Not Found'}))
+    });
+
+    const style = new Style(new StubMap());
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    style.loadJSON(createStyleJSON());
+    await waitFor(style, 'style.load');
+
+    const loadSprite = vi.spyOn(style, '_loadSprite');
+    style.on('error', () => {});
+    style._loadIconset('http://example.com/sprite');
+    await waitFor(style, 'data');
+
+    expect(loadSprite).toHaveBeenCalledWith('http://example.com/sprite');
+});
+
 test('Style#updateImage', async () => {
     const style = new Style(new StubMap());
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
