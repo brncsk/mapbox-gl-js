@@ -132,7 +132,10 @@ export class TargetFeature extends Feature {
 
         this.target = variant.target;
         this.namespace = variant.namespace;
-        if (variant.properties) this.properties = variant.properties;
+        // The base constructor reads the properties off the vector tile feature, which a
+        // feature of a model layer does not have: its properties live on the feature itself.
+        // A variant without properties of its own keeps the feature's, whichever way they came.
+        this.properties = variant.properties || feature.properties;
 
         if (this.target && (('featuresetId' in this.target && !this.target.importId) || ('layerId' in this.target))) {
             this.source = feature.source;
