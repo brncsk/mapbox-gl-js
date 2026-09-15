@@ -349,9 +349,11 @@ class Tiled3dModelBucket implements Bucket {
         for (const nodeInfo of nodesInfo) {
             if (!nodeInfo.node.meshes) continue;
             const evaluationFeature = nodeInfo.feature;
-            // Without states given, a node keeps the state it was last evaluated with.
+            // A state write hands over the features that changed, each with its whole
+            // state; a node not among them, and every node without states given, keeps
+            // the state it was last evaluated with.
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            const state = states ? states[evaluationFeature.id] : nodeInfo.state;
+            const state = states && evaluationFeature.id in states ? states[evaluationFeature.id] : nodeInfo.state;
             if (!evaluateEveryNode && deepEqual(state, nodeInfo.state)) continue;
             nodeInfo.state = structuredClone(state);
             const hasFeatures = nodeInfo.node.meshes && nodeInfo.node.meshes[0].featureData;
