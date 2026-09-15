@@ -1,7 +1,9 @@
-import {mat4} from 'gl-matrix';
+import {mat4, vec3, vec4} from 'gl-matrix';
+import Point from '@mapbox/point-geometry';
 import {calculateModelMatrix} from '../../data/model';
 import LngLat from '../../../src/geo/lng_lat';
-import {latFromMercatorY, lngFromMercatorX} from '../../../src/geo/mercator_coordinate';
+import {latFromMercatorY, lngFromMercatorX, tileToMeter} from '../../../src/geo/mercator_coordinate';
+import {pointInFootprint} from '../../source/replacement_source';
 import EXTENT from '../../../src/style-spec/data/extent';
 import {convertModelMatrixForGlobe, queryGeometryIntersectsProjectedAabb} from '../../util/model_util';
 import Feature from '../../../src/util/vectortile_to_geojson';
@@ -170,6 +172,99 @@ export function queryModelLayerIntersectsFeature(
     return false;
 }
 
+// How many steps the ray is followed between the top and the base of a node when it
+// enters through a wall rather than the top; the hit is placed at the first step inside
+// the footprint, so a storey is resolved to about a thirtieth of its height.
+const PRISM_WALL_STEPS = 32;
+
+/**
+ * Where the ray of a point query enters the prism a node stands in: its footprint
+ * raised between the lowest and the highest point of its meshes, as the node is drawn.
+ *
+ * The bounding box of a mesh is a poor stand-in for a building: the box of an L-shaped
+ * block covers its courtyard, and the boxes of a building delivered as one node per
+ * storey cover the same screen area, so a query that took the nearest box corner picked
+ * the highest storey wherever the boxes overlapped. The footprint is what the tile
+ * gives for the outline, so the ray is tested against the footprint between the node's
+ * base and top: it enters through the top when its point at that height lies in the
+ * footprint, else through a wall where it first lies in the footprint on its way down.
+ *
+ * @param placement Takes the node's own coordinates (after its global matrix) to tile
+ * space: the translation and the scale the layer draws the node with.
+ * @param tileMatrix Takes tile space to world space.
+ * @returns The depth of the entry point in clip space, or `undefined` for a miss.
+ */
+function rayEntersNodePrism(node: ModelNode, placement: mat4, tileMatrix: mat4, screenPoint: Point, transform: Transform): number | undefined {
+    if (!node.footprint) return;
+
+    // The z range of the node in tile space, where z is metres above the ground.
+    let zMin = Number.MAX_VALUE;
+    let zMax = -Number.MAX_VALUE;
+    const corner: vec3 = [0, 0, 0];
+    const visit = (n: ModelNode) => {
+        const m = mat4.multiply([], placement, n.globalMatrix);
+        for (let i = 0; i < n.meshes.length; ++i) {
+            if (i === n.lightMeshIndex) continue;
+            const aabb = n.meshes[i].aabb;
+            for (let c = 0; c < 8; ++c) {
+                corner[0] = c & 1 ? aabb.max[0] : aabb.min[0];
+                corner[1] = c & 2 ? aabb.max[1] : aabb.min[1];
+                corner[2] = c & 4 ? aabb.max[2] : aabb.min[2];
+                vec3.transformMat4(corner, corner, m);
+                zMin = Math.min(zMin, corner[2]);
+                zMax = Math.max(zMax, corner[2]);
+            }
+        }
+        if (n.children) {
+            for (const child of n.children) visit(child);
+        }
+    };
+    visit(node);
+    if (zMin === Number.MAX_VALUE || zMax <= zMin) return;
+
+    // The ray of the query in tile space: the screen point unprojected at the near and
+    // the far end of the clip volume.
+    const worldViewProjection = mat4.multiply([], transform.expandedFarZProjMatrix, tileMatrix);
+    const inverse = mat4.invert([], worldViewProjection);
+    if (!inverse) return;
+    const ndcX = 2 * screenPoint.x / transform.width - 1;
+    const ndcY = 1 - 2 * screenPoint.y / transform.height;
+    const unproject = (ndcZ: number): vec3 | undefined => {
+        const v = vec4.transformMat4([], [ndcX, ndcY, ndcZ, 1], inverse);
+        if (v[3] === 0) return;
+        return [v[0] / v[3], v[1] / v[3], v[2] / v[3]];
+    };
+    const near = unproject(-1);
+    const far = unproject(1);
+    if (!near || !far || far[2] >= near[2]) return;
+
+    const at = (z: number): vec3 => {
+        const t = (z - near[2]) / (far[2] - near[2]);
+        return [near[0] + t * (far[0] - near[0]), near[1] + t * (far[1] - near[1]), z];
+    };
+    const inside = (p: vec3) => pointInFootprint(new Point(p[0], p[1]), node.footprint);
+
+    // Through the top, or through a wall on the way down; a ray that starts below the
+    // top of the node (the camera inside the building) is followed from where it is.
+    let entry: vec3 | undefined;
+    const top = at(Math.min(zMax, near[2]));
+    if (inside(top)) {
+        entry = top;
+    } else {
+        for (let i = 1; i <= PRISM_WALL_STEPS; ++i) {
+            const p = at(top[2] + (zMin - top[2]) * (i / PRISM_WALL_STEPS));
+            if (inside(p)) {
+                entry = p;
+                break;
+            }
+        }
+    }
+    if (!entry) return;
+
+    const clip = vec4.transformMat4([], [entry[0], entry[1], entry[2], 1], worldViewProjection);
+    return clip[2] / clip[3];
+}
+
 export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureIndex: number, tilespaceGeometry: TilespaceQueryGeometry, transform: Transform): {feature: EvaluationFeature, intersectionZ: number, position: LngLat} | undefined {
     const nodeInfo = bucket.getNodesInfo()[featureIndex];
 
@@ -177,11 +272,9 @@ export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureInde
 
     let intersectionZ = Number.MAX_VALUE;
 
-    // AABB check
     const node = nodeInfo.node;
     const tile = tilespaceGeometry.tile;
     const tileMatrix = transform.calculatePosMatrix(tile.tileID.toUnwrapped(), transform.worldSize);
-    const modelMatrix = tileMatrix;
     const scale = nodeInfo.evaluatedScale;
     let elevation = 0;
     if (transform.elevation && node.elevation) {
@@ -190,11 +283,32 @@ export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureInde
     const anchorX = node.anchor ? node.anchor[0] : 0;
     const anchorY = node.anchor ? node.anchor[1] : 0;
 
-    mat4.translate(modelMatrix, modelMatrix, [anchorX * (scale[0] - 1), anchorY * (scale[1] - 1), elevation]);
-    mat4.scale(modelMatrix, modelMatrix, scale);
+    // The node is tested where it is drawn: with the translation of the layer, which
+    // `draw_model` applies the same way, and not only with its scale.
+    const tileUnitsPerMeter = 1.0 / tileToMeter(tile.tileID.canonical);
+    const translation = nodeInfo.evaluatedTranslation;
+    const tileTranslation: vec3 = [
+        anchorX * (scale[0] - 1) + translation[0] * tileUnitsPerMeter,
+        anchorY * (scale[1] - 1) + translation[1] * tileUnitsPerMeter,
+        elevation + translation[2]];
+    const placement = mat4.translate([], mat4.identity([]), tileTranslation);
+    mat4.scale(placement, placement, scale);
+    const modelMatrix = mat4.multiply([], tileMatrix, placement);
+
+    const screenQuery = tilespaceGeometry.queryGeometry;
+
+    // A point query on a node with a footprint is answered by the prism the node stands
+    // in; the bounding boxes below stay for area queries and for nodes without one.
+    if (screenQuery.isPointQuery()) {
+        const depth = rayEntersNodePrism(node, placement, tileMatrix, screenQuery.screenBounds[0], transform);
+        if (depth !== undefined) {
+            intersectionZ = depth;
+        } else if (node.footprint) {
+            return;
+        }
+    }
 
     // Collision checks are performed in screen space. Corners are in ndc space.
-    const screenQuery = tilespaceGeometry.queryGeometry;
     const projectedQueryGeometry = screenQuery.isPointQuery() ? screenQuery.screenBounds : screenQuery.screenGeometry;
 
     const checkNode = function (n: ModelNode) {
@@ -217,7 +331,7 @@ export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureInde
         }
     };
 
-    checkNode(node);
+    if (intersectionZ === Number.MAX_VALUE) checkNode(node);
     if (intersectionZ === Number.MAX_VALUE) return;
 
     const position = new LngLat(0, 0);
