@@ -704,6 +704,7 @@ export function process3DTile(gltf: GLTF, zScale: number): Array<ModelNode> {
         if (!hasBVH) {
             for (const mesh of node.meshes) {
                 parseHeightmap(mesh);
+                keepTrianglesForPicking(mesh);
             }
         }
         if (node.lights) {
@@ -712,6 +713,16 @@ export function process3DTile(gltf: GLTF, zScale: number): Array<ModelNode> {
         }
     }
     return nodes;
+}
+
+// Keeps a copy of the triangles of a mesh for a point query, which tests the ray of the
+// pointer against them once the vertex and index arrays are uploaded and destroyed. The
+// heightmap above holds the highest vertex of each cell only, so a roof of a few large
+// faces leaves its cells empty, and a bounding box or a footprint stands in for the
+// mesh too coarsely where a building has annexes or towers.
+function keepTrianglesForPicking(mesh: Mesh) {
+    mesh.pickPositions = mesh.vertexArray.float32.slice(0, mesh.vertexArray.length * 3);
+    mesh.pickIndices = mesh.indexArray.uint16.slice(0, mesh.indexArray.length * 3);
 }
 
 function parseHeightmap(mesh: Mesh) {

@@ -265,6 +265,98 @@ function rayEntersNodePrism(node: ModelNode, placement: mat4, tileMatrix: mat4, 
     return clip[2] / clip[3];
 }
 
+/**
+ * Where the ray of a point query first meets the triangles of a node, which the loader
+ * keeps for picking (`pickPositions`, `pickIndices`); exact where the prism of the
+ * footprint is not, which is every building with an annex, a tower or a courtyard.
+ *
+ * @param placement Takes the node's coordinates after its global matrix to tile space.
+ * @param tileMatrix Takes tile space to world space.
+ * @returns The depth of the hit in clip space, `undefined` for a miss, and `null` when
+ * the node keeps no triangles, so that the caller falls back.
+ */
+function rayHitsNodeTriangles(node: ModelNode, placement: mat4, tileMatrix: mat4, screenPoint: Point, transform: Transform): number | null | undefined {
+    const ndcX = 2 * screenPoint.x / transform.width - 1;
+    const ndcY = 1 - 2 * screenPoint.y / transform.height;
+    let kept = false;
+    let nearest = Number.MAX_VALUE;
+
+    const visit = (n: ModelNode) => {
+        // Node local coordinates to clip space, and the ray of the query in node local
+        // coordinates: the screen point at the near and the far end of the clip volume.
+        const local = mat4.multiply([], placement, n.globalMatrix);
+        mat4.multiply(local, tileMatrix, local);
+        const clip = mat4.multiply([], transform.expandedFarZProjMatrix, local);
+        const inverse = mat4.invert([], clip);
+        if (inverse) {
+            const unproject = (ndcZ: number): vec3 | undefined => {
+                const v = vec4.transformMat4([], [ndcX, ndcY, ndcZ, 1], inverse);
+                if (v[3] === 0) return;
+                return [v[0] / v[3], v[1] / v[3], v[2] / v[3]];
+            };
+            const origin = unproject(-1);
+            const end = unproject(1);
+            if (origin && end) {
+                const direction = vec3.subtract([], end, origin);
+                for (let i = 0; i < n.meshes.length; ++i) {
+                    if (i === n.lightMeshIndex) continue;
+                    const mesh = n.meshes[i];
+                    if (!mesh.pickPositions || !mesh.pickIndices) continue;
+                    kept = true;
+                    // The triangles are visited only where the box of the mesh is under the
+                    // point at all, which is what keeps a query on a tall building cheap.
+                    if (queryGeometryIntersectsProjectedAabb([screenPoint], transform, clip, mesh.aabb) == null) continue;
+                    const t = rayTrianglesParameter(origin, direction, mesh.pickPositions, mesh.pickIndices);
+                    if (t === undefined) continue;
+                    const hit = vec4.transformMat4([], [origin[0] + t * direction[0], origin[1] + t * direction[1], origin[2] + t * direction[2], 1], clip);
+                    nearest = Math.min(nearest, hit[2] / hit[3]);
+                }
+            }
+        }
+        if (n.children) {
+            for (const child of n.children) visit(child);
+        }
+    };
+    visit(node);
+
+    if (!kept) return null;
+    return nearest === Number.MAX_VALUE ? undefined : nearest;
+}
+
+// The smallest parameter along the ray, between 0 and 1, at which it meets one of the
+// triangles, or `undefined` when it meets none; the test is Möller and Trumbore's.
+function rayTrianglesParameter(origin: vec3, direction: vec3, positions: Float32Array, indices: Uint16Array | Uint32Array): number | undefined {
+    let nearest: number | undefined;
+    const e1 = [0, 0, 0];
+    const e2 = [0, 0, 0];
+    const p = [0, 0, 0];
+    const s = [0, 0, 0];
+    const q = [0, 0, 0];
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+        const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
+        e1[0] = positions[b] - positions[a]; e1[1] = positions[b + 1] - positions[a + 1]; e1[2] = positions[b + 2] - positions[a + 2];
+        e2[0] = positions[c] - positions[a]; e2[1] = positions[c + 1] - positions[a + 1]; e2[2] = positions[c + 2] - positions[a + 2];
+        p[0] = direction[1] * e2[2] - direction[2] * e2[1];
+        p[1] = direction[2] * e2[0] - direction[0] * e2[2];
+        p[2] = direction[0] * e2[1] - direction[1] * e2[0];
+        const det = e1[0] * p[0] + e1[1] * p[1] + e1[2] * p[2];
+        if (det > -1e-12 && det < 1e-12) continue;
+        const inv = 1 / det;
+        s[0] = origin[0] - positions[a]; s[1] = origin[1] - positions[a + 1]; s[2] = origin[2] - positions[a + 2];
+        const u = (s[0] * p[0] + s[1] * p[1] + s[2] * p[2]) * inv;
+        if (u < 0 || u > 1) continue;
+        q[0] = s[1] * e1[2] - s[2] * e1[1];
+        q[1] = s[2] * e1[0] - s[0] * e1[2];
+        q[2] = s[0] * e1[1] - s[1] * e1[0];
+        const v = (direction[0] * q[0] + direction[1] * q[1] + direction[2] * q[2]) * inv;
+        if (v < 0 || u + v > 1) continue;
+        const t = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) * inv;
+        if (t < 0 || t > 1) continue;
+        if (nearest === undefined || t < nearest) nearest = t;
+    }
+    return nearest;
+}
+
 export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureIndex: number, tilespaceGeometry: TilespaceQueryGeometry, transform: Transform): {feature: EvaluationFeature, intersectionZ: number, position: LngLat} | undefined {
     const nodeInfo = bucket.getNodesInfo()[featureIndex];
 
@@ -297,14 +389,22 @@ export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureInde
 
     const screenQuery = tilespaceGeometry.queryGeometry;
 
-    // A point query on a node with a footprint is answered by the prism the node stands
-    // in; the bounding boxes below stay for area queries and for nodes without one.
+    // A point query is answered by the triangles of the node where the loader kept them,
+    // else by the prism the node stands in when it has a footprint; the bounding boxes
+    // below stay for area queries and for nodes with neither.
     if (screenQuery.isPointQuery()) {
-        const depth = rayEntersNodePrism(node, placement, tileMatrix, screenQuery.screenBounds[0], transform);
-        if (depth !== undefined) {
-            intersectionZ = depth;
-        } else if (node.footprint) {
-            return;
+        const screenPoint = screenQuery.screenBounds[0];
+        const exact = rayHitsNodeTriangles(node, placement, tileMatrix, screenPoint, transform);
+        if (exact !== null) {
+            if (exact === undefined) return;
+            intersectionZ = exact;
+        } else {
+            const depth = rayEntersNodePrism(node, placement, tileMatrix, screenPoint, transform);
+            if (depth !== undefined) {
+                intersectionZ = depth;
+            } else if (node.footprint) {
+                return;
+            }
         }
     }
 

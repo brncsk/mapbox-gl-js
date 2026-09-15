@@ -111,6 +111,11 @@ export type Mesh = {
     segments: SegmentVector;
     centroid: vec3;
     heightmap: Float32Array;
+    // The triangles of the mesh kept for picking after the arrays are uploaded and
+    // destroyed: three floats per vertex and three indices per triangle. Kept for the
+    // meshes of a batched-model tile without a BVH, next to the heightmap.
+    pickPositions?: Float32Array;
+    pickIndices?: Uint16Array | Uint32Array;
 };
 
 // A rectangle with 5 DoF, no rolling
