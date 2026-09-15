@@ -69,16 +69,22 @@ function addAABBsToGridIndex(node: ModelNode, key: number, grid: GridIndex) {
     }
 }
 
+// Part 7, `plate`, is Diorama's: the face a tiler adds across a cut when it delivers a
+// building as one node per storey, so that a storey lifted away from its neighbours is a
+// closed tray. The style can then paint the cut apart from the walls and the roofs it
+// closes. The part nibble of a V2 feature value holds 0 to 15 and the vertex path admits
+// 0 to 7, so the part fits the format as it is.
 export const PartIndices = {
     wall: 1,
     door: 2,
     roof: 3,
     window: 4,
     lamp: 5,
-    logo: 6
+    logo: 6,
+    plate: 7
 } as const;
 
-export const PartNames = ['', 'wall', 'door', 'roof', 'window', 'lamp', 'logo'] as const;
+export const PartNames = ['', 'wall', 'door', 'roof', 'window', 'lamp', 'logo', 'plate'] as const;
 
 export class Tiled3dModelFeature {
     feature: EvaluationFeature;
@@ -102,7 +108,8 @@ export class Tiled3dModelFeature {
             [1, 0, 0, 1],   // roof
             [0.4, 1, 0, 1], // window
             [1, 0, 0, 1],   // lamp
-            [1, 0, 0, 1]];  // logo
+            [1, 0, 0, 1],   // logo
+            [1, 0, 0, 1]];  // plate
         this.hiddenByReplacement = false;
         this.evaluatedTranslation = [0, 0, 0];
         this.evaluatedScale = [1, 1, 1];
