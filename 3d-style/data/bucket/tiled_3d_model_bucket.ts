@@ -152,6 +152,9 @@ class Tiled3dModelBucket implements Bucket {
     dirty: boolean;
     brightness: number | null | undefined;
     needsPartStyleUBOs: boolean;
+    // Whether the next `evaluate` has to visit every node, whatever its state: set when
+    // a value every node reads has changed, such as the brightness or the projection.
+    evaluateEveryNode: boolean;
     states: FeatureStates;
     filter: FeatureFilter | null;
     worldview: string | undefined;
@@ -185,6 +188,7 @@ class Tiled3dModelBucket implements Bucket {
         this.replacementUpdateTime = 0;
         this.elevationReadFromZ = 0xff; // Re-read if underlying DEM zoom changes.
         this.brightness = brightness;
+        this.evaluateEveryNode = false;
         this.worldview = worldview;
         this.dirty = true;
         this.needsPartStyleUBOs = false;
@@ -285,11 +289,10 @@ class Tiled3dModelBucket implements Bucket {
             expressionRequiresReevaluation(layer.paint.get('model-height-based-emissive-strength-multiplier').value, brightnessChanged)) {
             this.projection = projection;
             this.brightness = calculatedBrightness;
-            // reset state so nodes get re-evaluated
-            const nodesInfo = this.getNodesInfo();
-            for (const nodeInfo of nodesInfo) {
-                nodeInfo.state = null;
-            }
+            // Every node is evaluated again, with the feature state it holds: dropping the
+            // state here would evaluate the nodes as if they had none, and the state would
+            // come back only with the next write of it.
+            this.evaluateEveryNode = true;
             return true;
         }
         return false;
@@ -302,9 +305,13 @@ class Tiled3dModelBucket implements Bucket {
         const canonical = this.id.canonical;
         for (const nodeInfo of nodesInfo) {
             const evaluationFeature = nodeInfo.feature;
+            // The state the node was last evaluated with: a translation or a scale that
+            // reads feature state would otherwise fall back to the value of no state on
+            // every zoom change, until the next state write evaluated the node again.
+            const state = nodeInfo.state || {};
 
-            nodeInfo.evaluatedTranslation = layer.paint.get('model-translation').evaluate(evaluationFeature, {}, canonical);
-            nodeInfo.evaluatedScale = layer.paint.get('model-scale').evaluate(evaluationFeature, {}, canonical);
+            nodeInfo.evaluatedTranslation = layer.paint.get('model-translation').evaluate(evaluationFeature, state, canonical);
+            nodeInfo.evaluatedScale = layer.paint.get('model-scale').evaluate(evaluationFeature, state, canonical);
         }
     }
 
@@ -312,13 +319,17 @@ class Tiled3dModelBucket implements Bucket {
         const nodesInfo = this.getNodesInfo();
         const canonical = this.id.canonical;
         const changedIds = isFeatureStateDelta && states ? new Set(Object.keys(states)) : null;
+        const evaluateEveryNode = this.evaluateEveryNode;
+        this.evaluateEveryNode = false;
         for (const nodeInfo of nodesInfo) {
             if (!nodeInfo.node.meshes) continue;
             const evaluationFeature = nodeInfo.feature;
-            if (changedIds && !changedIds.has(String(evaluationFeature.id))) continue;
+            const changed = !changedIds || changedIds.has(String(evaluationFeature.id));
+            if (!evaluateEveryNode && !changed) continue;
+            // Without states given for it, a node keeps the state it was last evaluated with.
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            const state = states && states[evaluationFeature.id];
-            if (deepEqual(state, nodeInfo.state)) continue;
+            const state = states && changed ? states[evaluationFeature.id] : nodeInfo.state;
+            if (!evaluateEveryNode && deepEqual(state, nodeInfo.state)) continue;
             nodeInfo.state = structuredClone(state);
             const hasFeatures = nodeInfo.node.meshes[0].hasFeatureData;
             nodeInfo.hasTranslucentParts = false;
