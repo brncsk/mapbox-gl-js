@@ -141,6 +141,11 @@ export type ModelNode = {
     isGeometryBloom: boolean;
     minZoom?: number;
     maxZoom?: number;
+    // The glTF extras of the node that the loader does not read itself, kept as the
+    // properties of the feature the node becomes in a batched-model tile. A tiler can
+    // then tag a node with anything a style expression or a query should see, such as
+    // the floor a piece of a building belongs to, without a change to the loader.
+    properties?: Record<string, unknown>;
     footprintDebugMesh?: {
         vertexBuffer: VertexBuffer;
         indexBuffer: IndexBuffer;

@@ -110,8 +110,10 @@ export class Tiled3dModelFeature {
         this.emissionHeightBasedParams = [];
         this.cameraCollisionOpacity = 1;
         this.targetLod = -1;
-        // Needs to calculate geometry
-        this.feature = {type: 'Point', id: node.id, geometry: [], properties: {'height': getNodeHeight(node)}};
+        // Needs to calculate geometry. The properties the tiler wrote into the extras of
+        // the node come first, so that the height the geometry gives and the part the
+        // evaluation sets cannot be overridden by an extra of the same name.
+        this.feature = {type: 'Point', id: node.id, geometry: [], properties: {...node.properties, 'height': getNodeHeight(node)}};
         this.aabb = this._getLocalBounds();
         this.state = null;
     }

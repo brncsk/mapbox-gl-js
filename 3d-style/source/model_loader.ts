@@ -340,6 +340,20 @@ function loadNodeBVH(gltf: GLTF, extData: Record<string, number>, meshIdx: numbe
     return bvh;
 }
 
+// The keys of the node extras that the loader reads for its own purposes: the node id,
+// the lights, the Mapbox rendering hints and the footprint, legacy or versioned. Every
+// other key is a property the tiler put there for the style and the queries to read.
+const reservedExtras = new Set([
+    'id',
+    'lights',
+    'MAPBOX_geometry_bloom',
+    'MAPBOX_zoom_min',
+    'MAPBOX_zoom_max',
+    'ground',
+    'mapbox:footprint:id',
+    'mapbox:footprint:version'
+]);
+
 function convertNode(nodeDesc: GLTFNode, gltf: GLTF, meshes: Array<Array<Mesh>>): ModelNode {
     const {matrix, rotation, translation, scale, mesh, extras, children, name} = nodeDesc;
     const node = {} as ModelNode;
@@ -374,6 +388,12 @@ function convertNode(nodeDesc: GLTFNode, gltf: GLTF, meshes: Array<Array<Mesh>>)
         }
         if (extras['MAPBOX_zoom_max']) {
             node.maxZoom = extras['MAPBOX_zoom_max'] as number;
+        }
+
+        for (const key in extras) {
+            if (reservedExtras.has(key)) continue;
+            if (!node.properties) node.properties = {};
+            node.properties[key] = extras[key];
         }
     }
 
