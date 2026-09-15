@@ -282,15 +282,20 @@ class Tiled3dModelBucket implements Bucket {
     updatePbrBuffer(node: ModelNode): boolean {
         let result = false;
         if (!node.meshes) return result;
+        // The feature array of a mesh is built when the node is evaluated, uploaded, and
+        // destroyed with the upload; a node the evaluation skipped, its state unchanged,
+        // holds a destroyed array and its buffer is up to date, so there is nothing to
+        // upload for it.
+        const current = (mesh: Mesh) => mesh.pbrBuffer && mesh.featureArray && mesh.featureArray.arrayBuffer;
         for (const mesh of node.meshes) {
-            if (mesh.pbrBuffer) {
+            if (current(mesh)) {
                 mesh.pbrBuffer.updateData(mesh.featureArray);
                 result = true;
             }
         }
         if (node.lodMeshes) {
             for (const mesh of node.lodMeshes) {
-                if (mesh.pbrBuffer) {
+                if (current(mesh)) {
                     mesh.pbrBuffer.updateData(mesh.featureArray);
                     result = true;
                 }
