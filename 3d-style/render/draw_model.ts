@@ -1157,7 +1157,9 @@ function drawBatchedModels(painter: Painter, source: SourceCache, layer: ModelSt
     // Precomputed once so the per-node lighting path can collapse two muls into one:
     // (negCam * zScale) * nodeModelMatrix == negCam * (zScale * nodeModelMatrix).
     const negCameraPosZScaleMatrix = mat4.multiply(new Float64Array(16), negCameraPosMatrix, zScaleMatrix);
-    const layerOpacity = layer.paint.get('model-opacity').constantOr(1.0);
+    // A node may be translucent by the layer's `model-opacity` alone, evaluated per node
+    // with its feature state (`evaluatedOpacity`), and not only by the front cutoff.
+    const layerMayBeTranslucent = layer.paint.get('model-opacity').constantOr(0.0) < 1.0;
     const layerValues = modelLayerUniformValues(painter, layer);
 
     const isShadowPass = painter.renderPass === 'shadow';
@@ -1173,6 +1175,10 @@ function drawBatchedModels(painter: Painter, source: SourceCache, layer: ModelSt
 
     const frontCutoffParams = layer.paint.get('model-front-cutoff');
     const frontCutoffEnabled = frontCutoffParams[2] < 1.0;
+    // A translucent node is blended over what stands behind it, so the tiles are then
+    // drawn from the farthest, as the nodes of a tile are below; the front cutoff is one
+    // source of translucency, the opacity of the nodes is the other.
+    const backToFront = frontCutoffEnabled || layerMayBeTranslucent;
 
     const cutoffParams = getCutoffParams(painter, layer.paint.get('model-cutoff-fade-range'));
 
@@ -1184,8 +1190,8 @@ function drawBatchedModels(painter: Painter, source: SourceCache, layer: ModelSt
         let start: number;
         let end: number;
         let step: number;
-        // When front cutoff is enabled the tiles are iterated in back to front order
-        if (frontCutoffEnabled) {
+        // When a node may be translucent the tiles are iterated in back to front order
+        if (backToFront) {
             start = coords.length - 1;
             end = -1;
             step = -1;
@@ -1329,7 +1335,9 @@ function drawBatchedModels(painter: Painter, source: SourceCache, layer: ModelSt
                 const depth = proj[2] * anchorScratch[0] + proj[6] * anchorScratch[1] + proj[10] * anchorScratch[2] + proj[14];
 
                 node.hidden = false;
-                let opacity = layerOpacity;
+                // The opacity of the node by the style, evaluated with its feature state;
+                // a node at zero is not drawn in any pass, so it casts no shadow either.
+                let opacity = nodeInfo.evaluatedOpacity;
                 if (!isShadowPass) {
                     if (frontCutoffEnabled) {
                         opacity *= nodeInfo.cameraCollisionOpacity;
@@ -1356,8 +1364,8 @@ function drawBatchedModels(painter: Painter, source: SourceCache, layer: ModelSt
             if (!isShadowPass) {
                 // Sort nodes. Opaque nodes first in front to back order. Then non-opaque nodes in back to front order.
                 sortedNodes.sort((a, b) => {
-                    // Front to back order for opaque nodes, and for all nodes when front cutoff is disabled
-                    if (!frontCutoffEnabled || (a.opacity === 1.0 && b.opacity === 1.0)) {
+                    // Front to back order for opaque nodes, whatever made the others translucent
+                    if (a.opacity === 1.0 && b.opacity === 1.0) {
                         return a.depth < b.depth ? -1 : 1;
                     }
                     if (a.opacity === 1.0) {

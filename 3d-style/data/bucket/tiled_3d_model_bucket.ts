@@ -75,6 +75,12 @@ export class Tiled3dModelFeature {
     feature: EvaluationFeature;
     evaluatedTranslation: [number, number, number];
     evaluatedScale: [number, number, number];
+    /**
+     * The `model-opacity` of the layer evaluated for this node, with its feature state.
+     * The draw multiplies it into the opacity of the node, so a style can fade one
+     * building of a tile by its state; at zero the node is not drawn at all.
+     */
+    evaluatedOpacity: number;
     hiddenByReplacement: boolean;
     hasTranslucentParts!: boolean;
     node: ModelNode;
@@ -99,6 +105,7 @@ export class Tiled3dModelFeature {
         this.partStyle = new Float32Array(MODEL_PART_STYLE_FLOATS);
         this.partStyleUBO = null;
         this.needsPartStyleUBO = false;
+        this.evaluatedOpacity = 1;
         this.cameraCollisionOpacity = 1;
         this.targetLod = -1;
         // Needs to calculate geometry. The properties the tiler wrote into the extras of
@@ -312,6 +319,8 @@ class Tiled3dModelBucket implements Bucket {
 
             nodeInfo.evaluatedTranslation = layer.paint.get('model-translation').evaluate(evaluationFeature, state, canonical);
             nodeInfo.evaluatedScale = layer.paint.get('model-scale').evaluate(evaluationFeature, state, canonical);
+            // The opacity may read the zoom as well as the state, as a fade-in by zoom does.
+            nodeInfo.evaluatedOpacity = layer.paint.get('model-opacity').evaluate(evaluationFeature, state, canonical);
         }
     }
 
@@ -360,6 +369,7 @@ class Tiled3dModelBucket implements Bucket {
 
             nodeInfo.evaluatedTranslation = layer.paint.get('model-translation').evaluate(evaluationFeature, state, canonical);
             nodeInfo.evaluatedScale = layer.paint.get('model-scale').evaluate(evaluationFeature, state, canonical);
+            nodeInfo.evaluatedOpacity = layer.paint.get('model-opacity').evaluate(evaluationFeature, state, canonical);
 
             if (hasFeatures) {
                 if (nodeInfo.partStyleUBO) {
