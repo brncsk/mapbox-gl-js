@@ -360,7 +360,10 @@ function rayTrianglesParameter(origin: vec3, direction: vec3, positions: Float32
 export function loadMatchingModelFeature(bucket: Tiled3dModelBucket, featureIndex: number, tilespaceGeometry: TilespaceQueryGeometry, transform: Transform): {feature: EvaluationFeature, intersectionZ: number, position: LngLat} | undefined {
     const nodeInfo = bucket.getNodesInfo()[featureIndex];
 
-    if (!nodeInfo || nodeInfo.hiddenByReplacement || !nodeInfo.node.meshes) return;
+    // A node the last draw left out (`hidden`: faded out by its opacity, or cut off in
+    // front of the camera) is not on the screen, so it answers no query there: the ray
+    // goes on to what stands behind it.
+    if (!nodeInfo || nodeInfo.hiddenByReplacement || nodeInfo.node.hidden || !nodeInfo.node.meshes) return;
 
     let intersectionZ = Number.MAX_VALUE;
 
