@@ -75,13 +75,13 @@ class CompoundExpression implements Expression {
 
         let signatureContext: ParsingContext | null = null;
 
-        let overloadIndex = -1;
-
-        for (const [params, evaluate] of availableOverloads) {
+        // The index counts every overload, also the ones passed over for their param
+        // count: `evaluate()` looks the function up by it in the full list of overloads
+        // after a transfer between threads.
+        for (const [overloadIndex, [params, evaluate]] of availableOverloads.entries()) {
             if (Array.isArray(params) && params.length !== args.length - 1) continue; // param count doesn't match
 
             overloadParams.push(params);
-            overloadIndex++;
 
             // Use a fresh-looking context for each attempted signature so
             // that, if we eventually succeed, we haven't polluted

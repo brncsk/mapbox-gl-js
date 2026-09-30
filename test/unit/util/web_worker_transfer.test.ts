@@ -4,6 +4,8 @@
 import {test, expect} from '../../util/vitest';
 import {register, serialize, deserialize} from '../../../src/util/web_worker_transfer';
 import {AJAXError} from '../../../src/util/ajax';
+import {createExpression} from '../../../src/style-spec/expression/index';
+import EvaluationContext from '../../../src/style-spec/expression/evaluation_context';
 
 const roundTrip = (v) => deserialize(serialize(v));
 
@@ -211,4 +213,37 @@ test('round-trips Headers as a Headers instance with values intact', () => {
     expect(result).toBeInstanceOf(Headers);
     expect(result.get('cache-control')).toBe('max-age=300');
     expect(result.get('expires')).toBe('Thu, 01 Jan 2099 00:00:00 GMT');
+});
+
+test('an operator with several signatures keeps the signature it was parsed with', () => {
+    // A transfer drops the function that evaluates a compound expression, and the
+    // expression finds it again by the index of its signature. Each expression here takes
+    // a signature that follows one with a different number of operands, and reads the
+    // feature, so that the parser does not fold it into a literal before the transfer.
+    const evaluateAfterTransfer = (spec, properties) => {
+        const parsed = createExpression(spec);
+        expect(parsed.result).toBe('success');
+
+        const ctx = new EvaluationContext();
+        ctx.globals = {zoom: 0};
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        ctx.feature = {type: 1, properties};
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        return roundTrip(parsed.value.expression).evaluate(ctx);
+    };
+
+    const has = (key) => ['has', key];
+
+    expect(evaluateAfterTransfer(['all', has('a')], {a: 1})).toBe(true);
+    expect(evaluateAfterTransfer(['all', has('a'), has('b'), has('c')], {a: 1, b: 1})).toBe(false);
+    expect(evaluateAfterTransfer(['any', has('a')], {})).toBe(false);
+    expect(evaluateAfterTransfer(['any', has('a'), has('b'), has('c')], {c: 1})).toBe(true);
+
+    const object = {key: 'of the object'};
+    expect(evaluateAfterTransfer(['get', 'key', ['get', 'object']], {key: 'of the feature', object})).toBe('of the object');
+    expect(evaluateAfterTransfer(['has', 'key', ['get', 'object']], {object})).toBe(true);
+
+    expect(evaluateAfterTransfer(['-', ['get', 'n']], {n: 3})).toBe(-3);
+    expect(evaluateAfterTransfer(['index-of', 1, ['get', 'list'], 1], {list: [1, 2, 1]})).toBe(2);
 });
