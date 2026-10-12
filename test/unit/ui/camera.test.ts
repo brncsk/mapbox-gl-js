@@ -1083,6 +1083,31 @@ describe('camera', () => {
             expect(fixedNum(transform.zoom, 3)).toEqual(2.469);
         });
 
+        test('fits the altitudes that the options give', () => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const camera = createCamera();
+            const bb = [[13.4, 52.5], [13.42, 52.51]];
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            const flat = camera.cameraForBounds(bb, {pitch: 60});
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            const tall = camera.cameraForBounds(bb, {pitch: 60, minAltitude: 0, maxAltitude: 2000});
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+            expect(tall.zoom).toBeLessThan(flat.zoom);
+        });
+
+        test('leaves the options that it is given unchanged', () => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const camera = createCamera();
+            const options = {pitch: 40};
+
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            camera.cameraForBounds([[-133, 16], [-68, 50]], options);
+
+            expect(options).toEqual({pitch: 40});
+        });
+
         test('bearing positive number', () => {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const camera = createCamera();

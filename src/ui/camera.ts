@@ -651,6 +651,10 @@ class Camera extends Evented<MapEvents> {
      * @param {number} [options.pitch=0] Desired map pitch at end of animation, in degrees.
      * @param {PointLike} [options.offset=[0, 0]] The center of the given bounds relative to the map's center, measured in pixels.
      * @param {number} [options.maxZoom] The maximum zoom level to allow when the camera would transition to the specified bounds.
+     * @param {number} [options.minAltitude] The lowest altitude of the bounds to fit, in meters. When it or
+     * `maxAltitude` is left out, the elevation of the terrain at the corners of the bounds takes its place.
+     * Not used with the globe projection.
+     * @param {number} [options.maxAltitude] The highest altitude of the bounds to fit, in meters.
      * @returns {CameraOptions | void} If map is able to fit to provided bounds, returns `CameraOptions` with
      * `center`, `zoom`, and `bearing`. If map is unable to fit, method will warn and return undefined.
      * @example
@@ -948,19 +952,22 @@ class Camera extends Evented<MapEvents> {
         const p0world = tr.project(coord0);
         const p1world = tr.project(coord1);
 
-        if(options.minAltitude === undefined || options.maxAltitude === undefined) {
+        // The box spans the altitudes that the options give, or else the elevations of the
+        // terrain at the four corners of the bounds.
+        let {minAltitude, maxAltitude} = eOptions;
+        if (minAltitude === undefined || maxAltitude === undefined) {
             const z0 = this.queryTerrainElevation(coord0);
             const z1 = this.queryTerrainElevation(coord1);
             const z2 = this.queryTerrainElevation(coord2);
             const z3 = this.queryTerrainElevation(coord3);
 
-            options.minAltitude ??= Math.min(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
-            options.maxAltitude ??= Math.max(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
+            minAltitude ??= Math.min(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
+            maxAltitude ??= Math.max(z0 || 0, z1 || 0, z2 || 0, z3 || 0);
         }
 
         const worldCoords: vec3[] = [
-            [p0world.x, p0world.y, Math.min(options.minAltitude || 0, options.maxAltitude || 0)],
-            [p1world.x, p1world.y, Math.min(options.minAltitude || 0, options.maxAltitude || 0)],
+            [p0world.x, p0world.y, minAltitude],
+            [p1world.x, p1world.y, maxAltitude]
         ];
 
         let aabb = Aabb.fromPoints(worldCoords);
