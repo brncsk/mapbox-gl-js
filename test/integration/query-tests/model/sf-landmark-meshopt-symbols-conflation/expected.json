@@ -35,24 +35,6 @@
   {
     "geometry": {
       "coordinates": [
-        -122.40966260433197,
-        37.805450306956516
-      ],
-      "type": "Point"
-    },
-    "id": "44106213",
-    "properties": {
-      "height": 29
-    },
-    "source": "file-system-tiles",
-    "state": {
-      "hover": true
-    },
-    "type": "Feature"
-  },
-  {
-    "geometry": {
-      "coordinates": [
         [
           [
             -122.39317238330841,
@@ -105,6 +87,24 @@
     "source": "composite",
     "sourceLayer": "building",
     "state": {},
+    "type": "Feature"
+  },
+  {
+    "geometry": {
+      "coordinates": [
+        -122.40966260433197,
+        37.805450306956516
+      ],
+      "type": "Point"
+    },
+    "id": "44106213",
+    "properties": {
+      "height": 29
+    },
+    "source": "file-system-tiles",
+    "state": {
+      "hover": true
+    },
     "type": "Feature"
   },
   {
