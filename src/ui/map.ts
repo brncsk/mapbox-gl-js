@@ -2696,6 +2696,41 @@ export class Map extends Camera {
         return this.style.getOwnSource(id);
     }
 
+    /**
+     * Fetches the tiles of a source again, and keeps drawing each tile until its new data
+     * arrives, so the map shows a change of the source's data without a blank frame. Use it when
+     * the data behind the source's tile URLs changed. The tiles are requested anew, so a server that
+     * revalidates them (an `ETag` with `Cache-Control: no-cache`) answers an unchanged tile with a
+     * `304`. The `reload`, `setTiles` and `setUrl` methods of a source remove its tiles first, and
+     * its layers stand empty until the tiles are back.
+     *
+     * A tile with a fetch in flight is fetched again once that fetch ends, since its request may have
+     * left before the data changed. The calls made meanwhile share that one fetch.
+     *
+     * @param {string} id The ID of the source.
+     * @param {Array<Object>} [tileIds] The tiles to fetch again, as `{x, y, z}` tile coordinates.
+     * Every tile of the source when left out; its tiles out of view are then dropped, so they are
+     * fetched again when they come back into view.
+     * @returns {Map} Returns itself to allow for method chaining.
+     * @example
+     * // The rooms changed on the server: fetch every tile of the source again.
+     * map.refreshTiles('rooms');
+     * @example
+     * // Only the tiles that hold the change.
+     * map.refreshTiles('rooms', [{x: 72476, y: 45847, z: 17}]);
+     */
+    refreshTiles(id: string, tileIds?: Array<{x: number, y: number, z: number}>): this {
+        const sourceCaches = this.style ? this.style.getOwnSourceCaches(id) : [];
+        if (sourceCaches.length === 0) {
+            throw new Error(`There is no source with the ID "${id}" to refresh.`);
+        }
+
+        for (const sourceCache of sourceCaches) {
+            sourceCache.refreshTiles(tileIds);
+        }
+        return this;
+    }
+
     /** @section Images */
 
     /**

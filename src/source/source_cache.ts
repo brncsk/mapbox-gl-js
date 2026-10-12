@@ -58,6 +58,7 @@ class SourceCache extends Evented {
     _supportsFading: boolean;
     _isRasterElevatedOverTerrain: boolean;
     _shouldReloadOnResume!: boolean;
+    _shouldRefreshOnResume!: boolean;
     _coveredTiles: Set<number>;
     transform!: Transform;
     used!: boolean;
@@ -180,9 +181,12 @@ class SourceCache extends Evented {
     resume() {
         if (!this._paused) return;
         const shouldReload = this._shouldReloadOnResume;
+        const shouldRefresh = this._shouldRefreshOnResume;
         this._paused = false;
         this._shouldReloadOnResume = false;
+        this._shouldRefreshOnResume = false;
         if (shouldReload) this.reload();
+        if (shouldRefresh) this.refreshTiles();
         if (this.transform) this.update(this.transform);
     }
 
@@ -285,6 +289,76 @@ class SourceCache extends Evented {
         }
     }
 
+    /**
+     * Fetches the source's tiles again, every tile or those whose canonical
+     * coordinates `tileIds` names, as a tile that expired per its HTTP headers
+     * is fetched: each tile keeps its data drawn until the new data arrives,
+     * so the map shows the change without a blank frame. `reload` parses the
+     * data that a tile already holds; this requests the tiles anew.
+     *
+     * A tile with a fetch in flight is fetched again once that fetch ends,
+     * because its request may have left before the data changed; the refreshes
+     * asked for meanwhile share that one fetch. An errored tile is requested
+     * anew. Without `tileIds`, the cache of the tiles out of view is emptied,
+     * so a tile that comes back into view is fetched too; with them, the named
+     * tiles leave that cache.
+     * @private
+     */
+    refreshTiles(tileIds?: Array<{x: number, y: number, z: number}>) {
+        if (this._paused) {
+            this._shouldRefreshOnResume = true;
+            return;
+        }
+
+        const named = (tile: Tile) => !tileIds || tileIds.some(({x, y, z}) => {
+            const {canonical} = tile.tileID;
+            return canonical.x === x && canonical.y === y && canonical.z === z;
+        });
+
+        if (tileIds) this._cache.filter(tile => !named(tile));
+        else this._cache.reset();
+
+        for (const [id, tile] of this._tiles) {
+            if (named(tile)) this._refreshTile(id);
+        }
+    }
+
+    _refreshTile(id: number) {
+        const tile = this._tiles.get(id);
+        if (!tile) return;
+
+        // A fetch in flight, or a load that the source parked to start after one (see
+        // `VectorTileSource#loadTile`), ends first; `_tileLoaded` then fetches the tile again. Two
+        // fetches of one tile must not be in flight at once: the vector worker keeps one load per
+        // tile, so the load that ends second finds no entry, returns no data, and
+        // `Tile#loadVectorData` empties the tile. A parse in flight ('reloading') is no fetch.
+        if (tile.refreshFetching || tile.reloadCallback || tile.state === 'loading' || tile.state === 'expired') {
+            tile.refreshAfterLoad = true;
+            return;
+        }
+
+        // This fetch leaves after every refresh asked for so far, so none of them waits any longer.
+        // It takes the place of the fetch that the tile's expiry timer would start beside it;
+        // `_tileLoaded` sets a new timer.
+        tile.refreshAfterLoad = false;
+        tile.refreshFetching = true;
+        const timer = this._timers.get(id);
+        if (timer) {
+            clearTimeout(timer);
+            this._timers.delete(id);
+        }
+
+        // An errored tile has no data to keep drawn. Without its actor, the source requests it
+        // anew; with it, the source would wait for a load that is not in flight.
+        if (tile.state === 'errored') {
+            tile.actor = null;
+            this._reloadTile(id, 'loading');
+            return;
+        }
+
+        this._reloadTile(id, 'expired');
+    }
+
     _reloadTile(id: number, state: TileState) {
         const tile = this._tiles.get(id);
 
@@ -305,6 +379,10 @@ class SourceCache extends Evented {
     }
 
     _tileLoaded(tile: Tile, id: number, previousState: TileState, err?: Error | null, data?: LoadVectorTileResult | null) {
+        // Every load but a parse ('reloading') is a fetch, and a refresh starts no fetch beside
+        // another, so a fetch that ends here is the refresh's own when one was in flight.
+        if (previousState !== 'reloading') tile.refreshFetching = false;
+
         // Sources call back with no error for aborted tiles; these are already unloaded and out of the
         // pyramid, so arming a reload timer for them would leak it past clearTiles() and retain the map.
         if (tile.aborted) return;
@@ -346,6 +424,19 @@ class SourceCache extends Evented {
         if (data && data.headers) responseHeaders = data.headers;
 
         this._source.fire(new Event('data', {dataType: 'source', tile, coord: tile.tileID, 'sourceCacheId': this.id, responseHeaders}));
+
+        // A refresh that waited for this load fetches the tile now, or waits on for a fetch still in
+        // flight. A tile that left the view meanwhile leaves the cache instead, so that it is fetched
+        // anew when it comes back into view. After a failed load the refresh keeps waiting: the tile
+        // has no old data to replace, and the next refresh requests it anew.
+        if (tile.refreshAfterLoad) {
+            if (this._tiles.get(id) === tile) {
+                this._refreshTile(id);
+            } else {
+                tile.refreshAfterLoad = false;
+                this._cache.filter(cached => cached !== tile);
+            }
+        }
     }
 
     _hasTunnelGeometry(): boolean {
@@ -1015,6 +1106,7 @@ class SourceCache extends Evented {
      */
     clearTiles() {
         this._shouldReloadOnResume = false;
+        this._shouldRefreshOnResume = false;
         this._paused = false;
 
         for (const id of this._tiles.keys())

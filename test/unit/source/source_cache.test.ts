@@ -14,6 +14,7 @@ import {Event, ErrorEvent, Evented} from '../../../src/util/evented';
 import browser from '../../../src/util/browser';
 import RasterArrayTileSource from '../../../src/source/raster_array_tile_source.js';
 
+import type {TileState} from '../../../src/source/tile';
 import type Dispatcher from '../../../src/util/dispatcher';
 import type {Map as MapboxMap} from '../../../src/ui/map';
 
@@ -1930,6 +1931,243 @@ describe('SourceCache#reload', () => {
         expect(() => {
             sourceCache.reload();
         }).not.toThrowError();
+    });
+});
+
+describe('SourceCache#refreshTiles', () => {
+    type TileCallback = (err?: Error | null) => void;
+    type RequestTile = (tile: Tile, callback: TileCallback) => void;
+    type TileLoad = (tile: Tile, callback: TileCallback, requestTile: RequestTile) => void;
+    type TileRequest = {id: number, state: TileState, actor: Tile['actor']};
+
+    /**
+     * A source cache whose tiles load at once unless `load` says otherwise, and that records the
+     * state of each tile as it is requested. `load` gets the recording request function, so that it
+     * can start a load that it parked.
+     */
+    function createRecordingSourceCache(load: TileLoad = (tile, callback) => {
+        tile.state = 'loaded';
+        callback();
+    }) {
+        const requests: Array<TileRequest> = [];
+        const requestTile: RequestTile = (tile, callback) => {
+            requests.push({id: tile.tileID.key, state: tile.state, actor: tile.actor});
+            load(tile, callback, requestTile);
+        };
+        const {sourceCache, eventedParent} = createSourceCache({loadTile: requestTile});
+        eventedParent.on('error', () => {});
+        sourceCache.onAdd();
+        return {sourceCache, requests};
+    }
+
+    /** A load that ends at once for the first load of a tile, and waits in `pending` for every later load. */
+    function createDeferredLoad(pending: Array<() => void>): TileLoad {
+        return (tile, callback) => {
+            const end = () => {
+                tile.state = 'loaded';
+                callback();
+            };
+            if (tile.state === 'loading') end();
+            else pending.push(end);
+        };
+    }
+
+    test('fetches a loaded tile again as expired, which keeps it drawn until the new data arrives', () => {
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache(createDeferredLoad(pending));
+        const tile = sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+
+        sourceCache.refreshTiles();
+
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
+        expect(tile.hasData()).toEqual(true);
+        expect(pending.length).toEqual(1);
+    });
+
+    test('fetches a tile that is loading again once its load ends, rather than parsing what that load brought', () => {
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache((tile, callback) => {
+            pending.push(() => {
+                tile.state = 'loaded';
+                callback();
+            });
+        });
+        sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+
+        sourceCache.refreshTiles();
+        expect(requests.map(({state}) => state)).toEqual(['loading']);
+
+        pending[0]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
+    });
+
+    test('fetches a tile once more after its refresh fetch, for every refresh asked for meanwhile, and never twice at once', () => {
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache(createDeferredLoad(pending));
+        sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+
+        sourceCache.refreshTiles();
+        sourceCache.refreshTiles();
+        sourceCache.refreshTiles();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
+
+        pending[0]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired', 'expired']);
+
+        pending[1]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired', 'expired']);
+    });
+
+    test('waits for a load that the source parked behind the load in flight before it fetches the tile', () => {
+        // As `VectorTileSource#loadTile` does: a request for a tile that is loading, with an actor,
+        // waits until the load in flight ends, and then starts.
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache((tile, callback, requestTile) => {
+            if (tile.state === 'loading' && tile.actor) {
+                tile.reloadCallback = callback;
+                return;
+            }
+
+            tile.actor = tile.actor || ({} as Tile['actor']);
+            pending.push(() => {
+                tile.state = 'loaded';
+                callback();
+
+                const parked = tile.reloadCallback;
+                if (parked) {
+                    requestTile(tile, parked);
+                    tile.reloadCallback = null;
+                }
+            });
+        });
+        sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+        sourceCache.reload();
+        sourceCache.refreshTiles();
+
+        pending[0]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'loading', 'loaded']);
+
+        pending[1]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'loading', 'loaded', 'expired']);
+    });
+
+    test('waits on for its fetch when a reload parses the tile beside it', () => {
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache(createDeferredLoad(pending));
+        sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+
+        sourceCache.refreshTiles();
+        sourceCache.reload();
+        sourceCache.refreshTiles();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired', 'reloading']);
+
+        // The parse ends first and leaves the tile 'loaded' while the fetch is still in flight.
+        pending[1]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired', 'reloading']);
+
+        pending[0]();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired', 'reloading', 'expired']);
+    });
+
+    test('drops a tile that left the view while its refresh waited from the cache, so that it is fetched anew', () => {
+        const pending: Array<() => void> = [];
+        const {sourceCache, requests} = createRecordingSourceCache(createDeferredLoad(pending));
+        const tileID = new OverscaledTileID(0, 0, 0, 0, 0);
+        sourceCache._addTile(tileID);
+        sourceCache._cache.setMaxSize(4);
+
+        sourceCache.refreshTiles();
+        sourceCache.refreshTiles();
+        sourceCache._removeTile(tileID.key);
+        expect(sourceCache._cache.has(tileID)).toEqual(true);
+
+        pending[0]();
+
+        expect(sourceCache._cache.has(tileID)).toEqual(false);
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
+    });
+
+    test('stops the expiry timer of a tile that it fetches, so that no expiry fetch starts beside the refresh', () => {
+        vi.useFakeTimers();
+        try {
+            const pending: Array<() => void> = [];
+            const {sourceCache, requests} = createRecordingSourceCache((tile, callback) => {
+                if (tile.state !== 'loading') {
+                    pending.push(callback);
+                    return;
+                }
+
+                tile.setExpiryData({cacheControl: 'max-age=1'});
+                tile.state = 'loaded';
+                callback();
+            });
+            sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+
+            sourceCache.refreshTiles();
+            vi.advanceTimersByTime(2000);
+
+            expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    test('requests an errored tile anew, without the actor of its failed load', () => {
+        const {sourceCache, requests} = createRecordingSourceCache((tile, callback) => {
+            if (requests.length === 1) {
+                tile.actor = {} as Tile['actor'];
+                callback(new Error('the server is away'));
+            }
+        });
+        const tile = sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+        expect(tile.state).toEqual('errored');
+
+        sourceCache.refreshTiles();
+
+        expect(requests[1].state).toEqual('loading');
+        expect(requests[1].actor).toEqual(null);
+    });
+
+    test('fetches only the tiles that it names, and drops only those from the cache of tiles out of view', () => {
+        const {sourceCache, requests} = createRecordingSourceCache();
+        const [a, b, c, d] = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => new OverscaledTileID(1, 0, 1, x, y));
+        sourceCache._addTile(a);
+        sourceCache._addTile(b);
+        sourceCache._cache.setMaxSize(4);
+        sourceCache._cache.add(c, new Tile(c, 512, 1));
+        sourceCache._cache.add(d, new Tile(d, 512, 1));
+        expect(sourceCache._cache.has(c) && sourceCache._cache.has(d)).toEqual(true);
+
+        sourceCache.refreshTiles([{x: 0, y: 0, z: 1}, {x: 0, y: 1, z: 1}]);
+
+        expect(requests.filter(({state}) => state === 'expired').map(({id}) => id)).toEqual([a.key]);
+        expect(sourceCache._cache.has(c)).toEqual(false);
+        expect(sourceCache._cache.has(d)).toEqual(true);
+    });
+
+    test('empties the cache of tiles out of view when it fetches every tile', () => {
+        const {sourceCache} = createRecordingSourceCache();
+        const outOfView = new OverscaledTileID(1, 0, 1, 1, 1);
+        sourceCache._cache.setMaxSize(4);
+        sourceCache._cache.add(outOfView, new Tile(outOfView, 512, 1));
+        expect(sourceCache._cache.has(outOfView)).toEqual(true);
+
+        sourceCache.refreshTiles();
+
+        expect(sourceCache._cache.has(outOfView)).toEqual(false);
+    });
+
+    test('while the source cache is paused, fetches the tiles again once it resumes', () => {
+        const {sourceCache, requests} = createRecordingSourceCache();
+        sourceCache._addTile(new OverscaledTileID(0, 0, 0, 0, 0));
+        sourceCache.transform = null;
+
+        sourceCache.pause();
+        sourceCache.refreshTiles();
+        expect(requests.map(({state}) => state)).toEqual(['loading']);
+
+        sourceCache.resume();
+        expect(requests.map(({state}) => state)).toEqual(['loading', 'expired']);
     });
 });
 

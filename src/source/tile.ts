@@ -170,6 +170,13 @@ class Tile {
     hillshadeFBO: Framebuffer | null | undefined;
     demTexture: Texture | null | undefined;
     refreshedUponExpiration!: boolean;
+    // True when `SourceCache#refreshTiles` asked for the tile while a fetch of it was in flight:
+    // that fetch may have left before the data changed, so the tile is fetched again once it ends.
+    refreshAfterLoad?: boolean;
+    // True while a fetch that `SourceCache#refreshTiles` started is in flight. The tile state does
+    // not show it: a `SourceCache#reload` beside the fetch sets the state to 'reloading', and the
+    // end of that parse sets it to 'loaded'.
+    refreshFetching?: boolean;
     reloadCallback: WorkerSourceVectorTileCallback | null | undefined;
     resourceTiming: Array<PerformanceResourceTiming> | null | undefined;
     queryPadding: number;
