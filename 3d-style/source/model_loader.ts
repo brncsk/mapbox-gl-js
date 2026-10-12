@@ -401,11 +401,14 @@ function loadNodeBVH(gltf: GLTF, extData: Record<string, number>, meshIdx: numbe
     return bvh;
 }
 
-// The keys of the node extras that the loader reads for its own purposes: the node id,
-// the lights, the Mapbox rendering hints and the footprint, legacy or versioned. Every
-// other key is a property the tiler put there for the style and the queries to read.
+// The keys of the node extras that belong to the format rather than to the style: the
+// node id, the lights, the Mapbox rendering hints and the footprint, legacy or versioned,
+// which the loader reads; and `anchor`, which Mapbox's tiler writes and the loader computes
+// from the meshes itself (`node.anchor`). Every other key is a property the tiler put
+// there for the style and the queries to read.
 const reservedExtras = new Set([
     'id',
+    'anchor',
     'lights',
     'MAPBOX_geometry_bloom',
     'MAPBOX_zoom_min',

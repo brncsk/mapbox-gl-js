@@ -93,6 +93,14 @@ describe('convertModel node extras', () => {
         expect(node.properties).toBeUndefined();
     });
 
+    test('keeps the anchor that a Mapbox tiler writes out of the properties', () => {
+        const [node] = convertModel(gltfWithNodes([
+            {name: 'landmark', extras: {id: '6062613', anchor: [6062, 4674], floor: 2}}
+        ]));
+
+        expect(node.properties).toEqual({floor: 2});
+    });
+
     test('gives the properties to the feature of the node, under its computed height', () => {
         const [node] = convertModel(gltfWithNodes([{
             name: 'floor',
