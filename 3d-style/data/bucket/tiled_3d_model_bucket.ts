@@ -160,7 +160,12 @@ class Tiled3dModelBucket implements Bucket {
     brightness: number | null | undefined;
     needsPartStyleUBOs: boolean;
     // Whether the next `evaluate` has to visit every node, whatever its state: set when
-    // a value every node reads has changed, such as the brightness or the projection.
+    // a value every node reads has changed, such as the brightness or the projection,
+    // and at first, so that the first evaluation, on the worker, writes the part style
+    // of every node. A node has no state yet and would compare equal to itself, and a
+    // part style block is created only for a node that was evaluated; a state write
+    // applied as the tile loads evaluates the nodes it names alone, and the rest would
+    // stand at their authored colour until a later evaluation of every node.
     evaluateEveryNode: boolean;
     states: FeatureStates;
     filter: FeatureFilter | null;
@@ -195,7 +200,7 @@ class Tiled3dModelBucket implements Bucket {
         this.replacementUpdateTime = 0;
         this.elevationReadFromZ = 0xff; // Re-read if underlying DEM zoom changes.
         this.brightness = brightness;
-        this.evaluateEveryNode = false;
+        this.evaluateEveryNode = true;
         this.worldview = worldview;
         this.dirty = true;
         this.needsPartStyleUBOs = false;
