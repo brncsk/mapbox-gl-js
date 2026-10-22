@@ -2,7 +2,7 @@ import type Context from '../../../src/gl/context';
 
 // Must stay in step with MODEL_PART_COUNT in model.vertex.glsl, and with PartNames in
 // tiled_3d_model_bucket.ts.
-export const MODEL_PART_COUNT = 7;
+export const MODEL_PART_COUNT = 8;
 
 // Four vec4 per part. Must stay in step with MODEL_PART_STYLE_SIZE_VEC4 in model.vertex.glsl.
 export const MODEL_PART_STYLE_SIZE_VEC4 = MODEL_PART_COUNT * 4;

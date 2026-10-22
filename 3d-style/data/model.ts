@@ -92,16 +92,23 @@ export const HEIGHTMAP_DIM = 64;
 
 // A vertex's feature id carries one of these in its low 4 bits, which selects the per-part style the
 // renderer evaluates for it.
+//
+// Part 7, `plate`, is Diorama's: the face a tiler adds across a cut when it delivers a
+// building as one node per storey, so that a storey lifted away from its neighbours is a
+// closed tray. The style can then paint the cut apart from the walls and the roofs it
+// closes. The part nibble of a V2 feature value holds 0 to 15, so the part fits the format
+// as it is; the part style block grows by one entry.
 export const PartIndices = {
     wall: 1,
     door: 2,
     roof: 3,
     window: 4,
     lamp: 5,
-    logo: 6
+    logo: 6,
+    plate: 7
 } as const;
 
-export const PartNames = ['', 'wall', 'door', 'roof', 'window', 'lamp', 'logo'] as const;
+export const PartNames = ['', 'wall', 'door', 'roof', 'window', 'lamp', 'logo', 'plate'] as const;
 
 export type Mesh = {
     // eslint-disable-next-line no-warning-comments

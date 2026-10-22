@@ -16,10 +16,10 @@ in vec3 a_pos_3f;
 
 // Number of building parts a vertex can be tagged with. Must stay in step with PartNames in
 // tiled_3d_model_bucket.hpp
-#define MODEL_PART_COUNT 7u
+#define MODEL_PART_COUNT 8u
 
 // Size of the per-part style block, 4 vec4 per part
-#define MODEL_PART_STYLE_SIZE_VEC4 28u
+#define MODEL_PART_STYLE_SIZE_VEC4 32u
 
 #ifdef HAS_ATTRIBUTE_a_feature
 // Evaluated style of a single building part
